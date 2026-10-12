@@ -169,9 +169,13 @@ class ProjectManager:
 
     # ---- операции (spec 3.7a)
     def _foreign_claims(self, pid: str) -> dict[str, tuple[str, str]]:
+        from pioneer.resources import same_owner_lineage
+
         me = f"project:{pid}"
-        return {rid: (c.mode, ", ".join(n for o, n in c.owners.items() if o != me))
-                for rid, c in self.hw.res.claims.items() if any(o != me for o in c.owners)}
+        return {rid: (c.mode, ", ".join(n for o, n in c.owners.items()
+                                      if not same_owner_lineage(me, o)))
+                for rid, c in self.hw.res.claims.items()
+                if any(not same_owner_lineage(me, o) for o in c.owners)}
 
     def _validate(self, pid: str, graph: Graph) -> Report:
         foreign = self._foreign_claims(pid)

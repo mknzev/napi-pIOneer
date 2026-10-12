@@ -66,12 +66,12 @@ class HW:
         with self._lock:
             previous = self.res.claims.get(pin_id)
             was_owner = previous is not None and owner in previous.owners
-            previous_mode = previous.mode if was_owner else None
+            previous_mode = previous.owner_modes[owner] if was_owner else None
             self.res.claim(owner, owner_name, pin_id, mode)
             cur = self._open.get(pin_id)
             old = cur
             old_value = bool(cur.line.read()) if cur and cur.mode == "gpio_out" else False
-            if cur and cur.mode != mode:  # единственный владелец сменил режим
+            if cur and cur.mode != mode:
                 self._close_pin(pin_id)
                 cur = None
             if cur is None:
@@ -83,14 +83,14 @@ class HW:
                         self.res.release(owner, pin_id)
                     else:
                         self.res.claim(owner, owner_name, pin_id, previous_mode)
-                        if old is not None:
-                            try:
-                                restored = self._open[pin_id] = self._open_line(pin_id, old.mode, old_value, debounce_ms)
-                                restored.listeners, restored.safe = old.listeners, old.safe
-                                if old.mode == "soft_pwm":
-                                    restored.line.set(old.line.freq, old.line.duty)
-                            except Exception as restore_error:
-                                e.add_note(f"не удалось восстановить прежнюю линию: {restore_error}")
+                    if old is not None:
+                        try:
+                            restored = self._open[pin_id] = self._open_line(pin_id, old.mode, old_value, debounce_ms)
+                            restored.listeners, restored.safe = old.listeners, old.safe
+                            if old.mode == "soft_pwm":
+                                restored.line.set(old.line.freq, old.line.duty)
+                        except Exception as restore_error:
+                            e.add_note(f"не удалось восстановить прежнюю линию: {restore_error}")
                     if isinstance(e, LineBusy):
                         raise ResourceConflict(f"{pin_id} {e.strerror or e}") from e
                     raise
@@ -211,10 +211,15 @@ class HW:
                         hub.close();del self._uart_hubs[ctl]
             for rid in self.res.release(owner, resource):
                 self._close(rid, safe_value)
-            for rid, o in self._open.items():
+            for rid, o in list(self._open.items()):
                 if resource is None or rid == resource:
                     for key in [k for k in o.listeners if k == owner or k.startswith(owner + "#")]:
                         del o.listeners[key]
+                    claim = self.res.claims[rid]
+                    if o.mode == "gpio_out" and claim.mode == "gpio_in":
+                        self._close_pin(rid, safe_value)
+                        restored = self._open[rid] = self._open_line(rid, "gpio_in", False, 0)
+                        restored.listeners = o.listeners
 
     def close_all(self, safe_value: bool | None = None) -> None:
         with self._lock:

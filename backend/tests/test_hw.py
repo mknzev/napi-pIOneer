@@ -58,6 +58,113 @@ def test_mode_switch_by_single_owner(bench, hw):
     assert bench.level("J9-7") is False
 
 
+@pytest.mark.parametrize("mode", ["gpio_out", "soft_pwm"])
+def test_project_gpio_lineage_reuses_exclusive_reservation(hw, mode):
+    root, child = "project:sensor", "project:sensor:node:cp:1"
+    hw.res.claim(root, "sensor", "J9-7", mode)
+    hw.acquire(child, "sensor", "J9-7", mode)
+    assert hw.res.claims["J9-7"].owners == {root: "sensor", child: "sensor"}
+    for foreign in ("project:other", "project:sensor2:node:cp:1", "script:sensor:cp:1"):
+        with pytest.raises(ResourceConflict, match="sensor"):
+            hw.acquire(foreign, "sensor", "J9-7", mode)
+    hw.release(child)
+    assert hw.res.owned_by(root) == ["J9-7"]
+    hw.release(root)
+    assert not hw.res.claims and not hw._open
+
+
+def test_project_gpio_modes_preserve_all_claims(hw):
+    root, child, sibling = "project:sensor", "project:sensor:node:cp:1", "project:sensor:n2:cp:1"
+    hw.res.claim(root, "sensor", "J9-7", "gpio_out")
+    hw.acquire(child, "sensor", "J9-7", "gpio_in")
+    hw.acquire(sibling, "sensor", "J9-7", "gpio_in")
+    for mode in ("gpio_out", "gpio_in"):
+        hw.acquire(child, "sensor", "J9-7", mode)
+        claim = hw.res.claims["J9-7"]
+        assert claim.owner_modes == {root: "gpio_out", child: mode, sibling: "gpio_in"}
+        assert claim.mode == "gpio_out"
+        assert hw._open["J9-7"].mode == mode
+        for foreign_mode in ("gpio_in", "gpio_out", "soft_pwm"):
+            with pytest.raises(ResourceConflict):
+                hw.acquire("project:other", "other", "J9-7", foreign_mode)
+    hw.release(child)
+    assert hw.res.owned_by(sibling) == ["J9-7"]
+    hw.release(sibling)
+    assert hw.res.owned_by(root) == ["J9-7"]
+    hw.release(root)
+    assert not hw.res.claims and not hw._open
+
+
+def test_project_mode_switch_cannot_upgrade_foreign_shared_input(hw):
+    hw.res.claim("project:sensor", "sensor", "J9-7", "gpio_in")
+    hw.acquire("project:sensor:node:cp:1", "sensor", "J9-7", "gpio_in")
+    hw.acquire("project:other", "other", "J9-7", "gpio_in")
+    with pytest.raises(ResourceConflict, match="other"):
+        hw.acquire("project:sensor:node:cp:1", "sensor", "J9-7", "gpio_out")
+    assert hw.res.claims["J9-7"].mode == "gpio_in"
+    assert hw._open["J9-7"].mode == "gpio_in"
+
+
+def test_releasing_last_project_output_restores_remaining_input(hw, bench):
+    root, child = "project:sensor", "project:sensor:node:cp:1"
+    hw.acquire(root, "sensor", "J9-7", "gpio_in")
+    hw.acquire(child, "sensor", "J9-7", "gpio_out", initial=True)
+    assert bench.level("J9-7") is True
+    hw.release(child)
+    assert hw.res.claims["J9-7"].owner_modes == {root: "gpio_in"}
+    assert hw._open["J9-7"].mode == "gpio_in"
+    assert bench.level("J9-7") is False
+    hw.acquire("project:other", "other", "J9-7", "gpio_in")
+    with pytest.raises(ResourceConflict, match="other"):
+        hw.acquire(root, "sensor", "J9-7", "gpio_out")
+
+
+def test_lineage_does_not_share_incompatible_modes_or_buses(hw):
+    hw.res.claim("project:sensor", "sensor", "J9-7", "soft_pwm")
+    with pytest.raises(ResourceConflict):
+        hw.acquire("project:sensor:node:cp:1", "sensor", "J9-7", "gpio_out")
+    hw.res.claim("project:sensor", "sensor", "i2c1@0x50", "i2c")
+    with pytest.raises(ResourceConflict):
+        hw.res.claim("project:sensor:node:cp:1", "sensor", "i2c1@0x50", "i2c")
+    hw.acquire("script:sensor:cp:1", "sensor", "J9-12", "gpio_out")
+    with pytest.raises(ResourceConflict):
+        hw.acquire("script:sensor:cp:2", "sensor", "J9-12", "gpio_out")
+
+
+@pytest.mark.parametrize("already_open", [False, True])
+def test_failed_child_mode_switch_restores_claim_and_line(hw, monkeypatch, already_open):
+    root, child = "project:sensor", "project:sensor:node:cp:1"
+    hw.acquire(root, "sensor", "J9-7", "gpio_out", initial=True)
+    if already_open:
+        hw.acquire(child, "sensor", "J9-7", "gpio_out")
+
+    def fail(*args, **kwargs):
+        raise OSError("HAL cannot open input")
+
+    monkeypatch.setattr(hw.hal, "open_input", fail)
+    with pytest.raises(OSError, match="HAL cannot open input"):
+        hw.acquire(child, "sensor", "J9-7", "gpio_in")
+    expected = {root: "gpio_out", child: "gpio_out"} if already_open else {root: "gpio_out"}
+    assert hw.res.claims["J9-7"].owner_modes == expected
+    assert hw._open["J9-7"].mode == "gpio_out"
+    assert hw.value("J9-7") is True
+
+
+def test_failed_child_output_restores_its_input_mode_not_reservation(hw, monkeypatch):
+    root, child = "project:sensor", "project:sensor:node:cp:1"
+    hw.res.claim(root, "sensor", "J9-7", "gpio_out")
+    hw.acquire(child, "sensor", "J9-7", "gpio_in")
+
+    def fail(*args, **kwargs):
+        raise OSError("HAL cannot open output")
+
+    monkeypatch.setattr(hw.hal, "open_output", fail)
+    with pytest.raises(OSError, match="HAL cannot open output"):
+        hw.acquire(child, "sensor", "J9-7", "gpio_out")
+    assert hw.res.claims["J9-7"].owner_modes == {root: "gpio_out", child: "gpio_in"}
+    assert hw._open["J9-7"].mode == "gpio_in"
+
+
 def test_interface_pin_rejected_with_hint(hw):
     with pytest.raises(ResourceConflict, match="I2C3 m0.*перезагрузите"):
         hw.acquire("p1", "Тест", "J9-11", "gpio_out")

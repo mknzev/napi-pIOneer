@@ -96,6 +96,65 @@ def test_block_timers_and_log(env):
     assert wait_for(lambda: any("второй тик" in line["text"] for line in pm.log_tail(p.id)), 1)
 
 
+GPIO_BLOCK = '''from pioneer.block import node, Node, Out, Param, Bool
+
+@node(id="gpio_sensor", title="GPIO sensor")
+class GPIOSensor(Node):
+    pin = Param("pin", "J9-7", modes=("gpio_out",), required=True)
+    fail = Param(bool, False)
+    value = Out(Bool)
+
+    def setup(self):
+        import board
+        import digitalio
+        self.gpio = digitalio.DigitalInOut(getattr(board, self.pin.replace("-", "_")))
+        self.gpio.switch_to_output(True)
+        self.gpio.switch_to_input(digitalio.Pull.UP)
+        self.gpio.switch_to_output(True)
+        self.value.set(self.gpio.value)
+        if self.fail:
+            raise ValueError("setup failed after GPIO open")
+'''
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_block_pin_reservation_circuitpython_start_and_cleanup(env, hw, bench, fail):
+    bm, pm, _ = env
+    block = bm.create("GPIO sensor", GPIO_BLOCK)
+    assert block["error"] is None, block
+    project = pm.create("sensor")
+    pm.apply_ops(project.id, [
+        {"op": "add_node", "id": "sensor", "type": block["types"][0],
+         "params": {"fail": fail}},
+    ])
+    if fail:
+        with pytest.raises(Exception, match="setup failed after GPIO open"):
+            pm.start(project.id)
+        assert pm.status(project.id)["state"] == "error"
+        assert project.id not in pm.engine.runtimes
+        pm.apply_ops(project.id, [
+            {"op": "set_param", "node": "sensor", "name": "fail", "value": False},
+        ])
+    else:
+        pm.start(project.id)
+        runtime = pm.engine.runtimes[project.id]
+        assert runtime.sample("sensor", "value").value is True
+        assert pm._foreign_claims(project.id) == {}
+        foreign = pm.create("sensor")
+        pm.apply_ops(foreign.id, [
+            {"op": "add_node", "id": "sensor", "type": block["types"][0]},
+        ])
+        with pytest.raises(Exception, match="sensor"):
+            pm.start(foreign.id)
+        pm.stop(project.id)
+    assert not hw.res.claims and not hw._open
+    assert not bench._runtime_pulls.get("J9-7")
+    pm.start(project.id)
+    assert pm.engine.runtimes[project.id].sample("sensor", "value").value is True
+    pm.stop(project.id)
+    assert not hw.res.claims and not hw._open
+
+
 def test_hung_block_isolated_and_dirty_after_save(env):
     bm, pm, _ = env
     slow = TEMPLATE.replace("    def on_change(self, changed):\n", "    def on_change(self, changed):\n        import time\n        time.sleep(3)\n")

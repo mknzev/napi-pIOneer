@@ -80,6 +80,32 @@ def test_buffers_lock_and_conflict(circuit, hw, bench):
         busio.SPI(board.SCK, board.MOSI, board.MISO)
 
 
+def test_gpio_project_reservation_lifecycle(circuit, hw, bench):
+    import board
+    import digitalio
+
+    root = "project:sensor"
+    circuit.owner = root + ":node"
+    hw.res.claim(root, "sensor", "J9-7", "gpio_out")
+    first = digitalio.DigitalInOut(board.J9_7)
+    second = digitalio.DigitalInOut(board.GPIO2_A4)
+    for pin in (first, second):
+        pin.switch_to_output(True)
+        assert pin.value
+        pin.switch_to_input(digitalio.Pull.UP)
+        assert pin.value
+    owners = set(hw.res.claims["J9-7"].owners)
+    first.deinit()
+    assert set(hw.res.claims["J9-7"].owners) == owners - {root + ":node:cp:1"}
+    with pytest.raises(Exception, match="sensor"):
+        hw.acquire("project:other", "other", "J9-7", "gpio_out")
+    second.deinit()
+    assert hw.res.claims["J9-7"].owners == {root: "sensor"}
+    assert not bench._runtime_pulls.get("J9-7")
+    hw.release(root)
+    assert not hw.res.claims and not hw._open
+
+
 @pytest.mark.parametrize("chip", ["bme280", "sht4x", "ssd1306", "pca9685"])
 def test_real_driver(circuit, bench, monkeypatch, chip):
     site = REAL_SITE

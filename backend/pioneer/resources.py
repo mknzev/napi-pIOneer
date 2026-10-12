@@ -12,6 +12,8 @@
 этом уже отданы интерфейсу (Board.function) и как GPIO недоступны.
 
 gpio_out / soft_pwm — эксклюзивно; gpio_in / adc — разделяемые (рефкаунт владельцев).
+GPIO-хендлы одного project:<id> используют общий захват; резервирование выхода
+сохраняется, пока его владелец не освободит ресурс, даже если хендл открыл вход.
 Пакет захватов атомарен: либо все, либо ни одного.
 """
 from __future__ import annotations
@@ -49,11 +51,24 @@ def led_id(led: str) -> str:
     return f"led:{led}"
 
 
+def same_owner_lineage(owner: str, other: str) -> bool:
+    if owner == other:
+        return True
+    parts = owner.split(":", 2)
+    return (len(parts) >= 2 and parts[0] == "project" and bool(parts[1])
+            and other.split(":", 2)[:2] == parts[:2])
+
+
 @dataclass
 class Claim:
     resource: str
     mode: Mode
     owners: dict[str, str] = field(default_factory=dict)  # owner id -> человекочитаемое имя
+    owner_modes: dict[str, Mode] = field(default_factory=dict)
+
+    def refresh_mode(self) -> None:
+        self.mode = ("gpio_out" if "gpio_out" in self.owner_modes.values()
+                     else next(iter(self.owner_modes.values())))
 
 
 class ResourceConflict(Exception):
@@ -80,12 +95,22 @@ class ResourceManager:
                 if other and any(o != owner for o in other.owners):
                     raise ResourceConflict(f"{resource}: UART занят в несовместимом режиме")
         claim = self.claims.get(resource)
-        if claim is None or owner in claim.owners and len(claim.owners) == 1:
+        if claim is None:
             return
-        if claim.mode == mode and mode in SHARED:
-            return
-        holders = ", ".join(f'"{n}"' for o, n in claim.owners.items() if o != owner)
-        raise ResourceConflict(f"{resource} занят ({claim.mode}): {holders}")
+        holders = []
+        for existing, name in claim.owners.items():
+            existing_mode = claim.owner_modes[existing]
+            if existing == owner:
+                continue
+            if existing_mode == mode and mode in SHARED:
+                continue
+            if resource in self.board.pins and same_owner_lineage(owner, existing):
+                if (existing_mode == mode and mode in ("gpio_out", "soft_pwm")
+                        or {existing_mode, mode} <= {"gpio_in", "gpio_out"}):
+                    continue
+            holders.append(f'"{name}"')
+        if holders:
+            raise ResourceConflict(f"{resource} занят ({claim.mode}): {', '.join(holders)}")
 
     def _check_pin(self, pin_id: str, mode: Mode) -> None:
         board = self.board
@@ -157,9 +182,11 @@ class ResourceManager:
                 raise ResourceConflict("; ".join(errors))
             for res, mode in wants.items():
                 claim = self.claims.get(res)
-                if claim is None or claim.mode != mode:  # смена режима единственным владельцем
+                if claim is None:
                     claim = self.claims[res] = Claim(res, mode)
                 claim.owners[owner] = owner_name
+                claim.owner_modes[owner] = mode
+                claim.refresh_mode()
 
     def claim(self, owner: str, owner_name: str, resource: str, mode: Mode) -> None:
         self.claim_many(owner, owner_name, {resource: mode})
@@ -171,9 +198,12 @@ class ResourceManager:
             for rid, claim in list(self.claims.items()):
                 if (resource is None or rid == resource) and owner in claim.owners:
                     del claim.owners[owner]
+                    del claim.owner_modes[owner]
                     if not claim.owners:
                         del self.claims[rid]
                         freed.append(rid)
+                    else:
+                        claim.refresh_mode()
         return freed
 
     def owned_by(self, owner: str) -> list[str]:
