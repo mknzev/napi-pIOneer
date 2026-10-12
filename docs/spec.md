@@ -365,10 +365,11 @@ napi-pioneer/
   frontend/             # Vite + React + TS + Tailwind + xyflow + Monaco
   boards/napi-c.yaml
   deploy/               # systemd unit, nginx snippet, install.sh
-  Makefile              # dev, test, build, deploy
+  Makefile              # prepare, dev, test, build, deploy
 ```
 
-- **Разработка на Mac**: `make dev` — core со стендом (BenchHAL) + Vite dev-сервер; всё работает без платы.
+- **Подготовка на компьютере**: после скачивания проекта выполнить `make prepare` — Python 3.12 и зависимости бэкенда по `uv.lock`, npm-зависимости фронтенда по `package-lock.json`. Повторять после изменения зависимостей; остальные цели не запускают подготовку автоматически.
+- **Разработка на Mac**: `make dev` после подготовки — core со стендом (BenchHAL) + Vite dev-сервер; всё работает без платы.
 - **Деплой**: `make deploy BOARD=root@192.168.1.161` — сборка фронта, tar по SSH: `backend/pioneer/` + `frontend/dist` + вендоренных зависимостей в `/mount/rfs/rw/.pioneer/app/`, затем идемпотентный `install.sh` на плате (systemd-юнит в `/etc/systemd/system`, nginx-сниппет, `nginx -s reload`, restart).
 - После soft_reset плата теряет только юнит и сниппет → повторный `make deploy` (или `install.sh` на плате) восстанавливает всё, данные целы.
 - Python-зависимости: системные пакеты платы (pin версий в `pyproject` под них) + чисто-питоновские вендоренные в `app/vendor/`. Ничего не ставить `pip install` в систему.

@@ -1,12 +1,19 @@
 BOARD ?= root@192.168.1.161
 SSH_KEY ?= ~/.ssh/mkzev_rsa
 APP_DIR := /mount/rfs/rw/.pioneer/app
-PY := uv run --python 3.12  # вызывается из backend/
+PY := uv run --no-sync --python 3.12  # вызывается из backend/ после make prepare
 
-.PHONY: dev core ui build test lint format deploy reference vendor-ai
+.PHONY: help prepare dev core ui build test lint format deploy reference vendor-ai
+
+help: ## Помощь
+	@awk 'BEGIN {FS = ":.*##"; printf "\nДоступные цели:\n"} /^[a-zA-Z0-9_.-]+:.*##/ {printf "  %-14s %s\n", $$1, $$2} END {printf "\n"}' $(MAKEFILE_LIST)
 
 dev:  ## core (mock-HAL на Mac) :8100 + Vite :5173 -> http://localhost:5173/pioneer/
 	$(MAKE) -j2 core ui
+
+prepare:  ## зависимости для разработки и деплоя после скачивания проекта
+	cd backend && uv sync --locked --python 3.12
+	cd frontend && npm ci --include=dev
 
 DEV_PASSWORD ?= pioneer
 

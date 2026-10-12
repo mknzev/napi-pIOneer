@@ -8,7 +8,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 ![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)
 ![React 19](https://img.shields.io/badge/react-19-61DAFB?logo=react&logoColor=black)
-![Board](https://img.shields.io/badge/board-Napi--C%20(RK3308)-orange)
+![Board](<https://img.shields.io/badge/board-Napi--C%20(RK3308)-orange>)
 ![OS](https://img.shields.io/badge/os-NapiLinux%200.3.x-informational)
 
 <img src="docs/screenshots/project-editor.webp" alt="Редактор проекта napi-pIOneer: граф нод «TM1637: секундомер», плата Napi-C с гребёнками J9/J10 и проводами от пинов к нодам" width="900">
@@ -44,9 +44,17 @@
 
 ## Быстрый старт
 
-### Без платы (Mac/Linux, виртуальный стенд)
+### Подготовка после скачивания
 
-Нужны [uv](https://docs.astral.sh/uv/) и Node.js.
+На компьютере для разработки или деплоя нужны [uv](https://docs.astral.sh/uv/), Node.js и npm.
+
+```bash
+make prepare
+```
+
+Команда создаёт или синхронизирует `backend/.venv` с Python 3.12 по `backend/uv.lock` и устанавливает зависимости фронтенда по `frontend/package-lock.json`, включая TypeScript и Vite.
+
+### Без платы (Mac/Linux, виртуальный стенд)
 
 ```bash
 make dev
@@ -69,6 +77,7 @@ ssh root@<адрес-платы> /mount/rfs/rw/.pioneer/bin/pioneer set-password
 ```
 
 Код и данные живут в `/mount/rfs/rw/.pioneer` — переживают OTA-обновление и сброс к заводским; повторный `make deploy` восстанавливает systemd-юнит и nginx-сниппет.
+При деплое отдельно подготавливаются AI-зависимости для Python 3.12 / aarch64 на плате.
 
 ### Тесты
 
@@ -117,16 +126,16 @@ print(f"{bme.temperature:.1f} °C, {bme.humidity:.0f} %")
 
 ## Документация
 
-| | |
-|---|---|
-| 🚀 [Начало работы](docs/sdk/start.md) | первый скрипт, цикл событий, таймеры |
-| 🧩 [Проекты и шаблоны](docs/sdk/projects.md) · [Рецепты](docs/sdk/recipes.md) | граф нод, типовые сценарии |
-| 🐍 [Скрипты и файлы](docs/sdk/workspace.md) · [Свои блоки](docs/sdk/blocks.md) | многофайловые проекты, CLI, Python-блоки |
-| 🟣 [Adafruit](docs/sdk/adafruit.md) · [Python-модули](docs/sdk/modules.md) · [Датчики I2C](docs/sdk/sensors.md) | драйверы и периферия |
-| 🔧 [Железо](docs/sdk/hardware.md) · [Драйверы ядра](docs/sdk/drivers.md) | пины, оверлеи, подтяжки, как не сжечь плату |
-| 📡 [Сеть, HTTP, MQTT](docs/sdk/network.md) · [AI](docs/sdk/ai.md) | удалённое управление, помощник |
-| 🩺 [Диагностика](docs/sdk/system.md) · [Ошибки](docs/sdk/errors.md) | watchdog, отчёт о системе, разбор ошибок |
-| 📐 [Спецификация](docs/spec.md) · [Идеи](docs/ideas/) | архитектура и планы |
+|                                                                                                                 |                                             |
+| --------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| 🚀 [Начало работы](docs/sdk/start.md)                                                                           | первый скрипт, цикл событий, таймеры        |
+| 🧩 [Проекты и шаблоны](docs/sdk/projects.md) · [Рецепты](docs/sdk/recipes.md)                                   | граф нод, типовые сценарии                  |
+| 🐍 [Скрипты и файлы](docs/sdk/workspace.md) · [Свои блоки](docs/sdk/blocks.md)                                  | многофайловые проекты, CLI, Python-блоки    |
+| 🟣 [Adafruit](docs/sdk/adafruit.md) · [Python-модули](docs/sdk/modules.md) · [Датчики I2C](docs/sdk/sensors.md) | драйверы и периферия                        |
+| 🔧 [Железо](docs/sdk/hardware.md) · [Драйверы ядра](docs/sdk/drivers.md)                                        | пины, оверлеи, подтяжки, как не сжечь плату |
+| 📡 [Сеть, HTTP, MQTT](docs/sdk/network.md) · [AI](docs/sdk/ai.md)                                               | удалённое управление, помощник              |
+| 🩺 [Диагностика](docs/sdk/system.md) · [Ошибки](docs/sdk/errors.md)                                             | watchdog, отчёт о системе, разбор ошибок    |
+| 📐 [Спецификация](docs/spec.md) · [Идеи](docs/ideas/)                                                           | архитектура и планы                         |
 
 ## ⚠️ Про железо
 
@@ -139,6 +148,7 @@ Napi-C — это 3.3 В логика и единицы миллиампер н�
 Проект сделан для плат **Napi** — открытой линейки одноплатных и промышленных компьютеров на Rockchip от команды **lab240 / napilab**. Огромное спасибо им за железо, NapiLinux и открытые исходники.
 
 **Платформа**
+
 - 🌐 [napiworld.ru](https://napiworld.ru) — сайт, документация и блог
 - 📘 [Napi-C](https://napiworld.ru/docs/computers/napi-c) — плата, на которой всё это работает
 - 🛠️ [Программная поддержка](https://napiworld.ru/software/) — консоль, U-Boot, GPIO, I2C, оверлеи, Modbus
@@ -146,6 +156,7 @@ Napi-C — это 3.3 В логика и единицы миллиампер н�
 - 📦 [repo.napilab.ru](https://napiworld.ru/software/notes/napilab-repo/) — apt-репозиторий с mbusd, mbscan, modbus-slave
 
 **GitHub**
+
 - [lab240](https://github.com/lab240) и [napilab](https://github.com/napilab) — организации проекта
 - [napilab/napi-boards](https://github.com/napilab/napi-boards) — DTS, оверлеи и распиновки плат
 - [lab240/napi-board-config](https://github.com/lab240/napi-board-config) — настройка платы: EEPROM, MAC, оверлеи
@@ -164,6 +175,7 @@ Napi-C — это 3.3 В логика и единицы миллиампер н�
 [FastAPI](https://fastapi.tiangolo.com) · [libgpiod](https://git.kernel.org/pub/scm/libs/libgpiod/libgpiod.git) · [smbus2](https://github.com/kplindegaard/smbus2) · [pyserial](https://github.com/pyserial/pyserial) · [Pillow](https://python-pillow.org) · [React](https://react.dev) · [React Flow](https://reactflow.dev) · [Monaco Editor](https://microsoft.github.io/monaco-editor/) · [Tailwind CSS](https://tailwindcss.com) · [Vite](https://vite.dev) · [Jedi](https://github.com/davidhalter/jedi) · [Adafruit CircuitPython](https://circuitpython.org)
 
 В репозиторий включены:
+
 - [paho-mqtt](https://github.com/eclipse-paho/paho.mqtt.python) 2.1.0 — `backend/pioneer/vendor/`, используется под **BSD-3-Clause** (двойная лицензия EPL-2.0 / EDL-1.0), лицензии — в `vendor/paho_mqtt-2.1.0.dist-info/licenses/`;
 - шрифт 5×8 из Adafruit CircuitPython framebuf — `backend/pioneer/compat/circuitpython/`, MIT, см. `FONT-LICENSE`.
 
